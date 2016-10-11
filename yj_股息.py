@@ -6,7 +6,7 @@ import math
 import talib as tl
 from jqdata import gta
 
-def getDivid(stocks): #(context,stocks):
+def getDivid(stocks, year_watch = 3): #(context,stocks):
     #year = context.current_dt.year-1
     now = datetime.now()  
     year = now.year-1
@@ -31,48 +31,67 @@ def getDivid(stocks): #(context,stocks):
         )).dropna(axis=0)
     
     stocks_symbol_this_year=list(df1['SYMBOL'])
-    
-    #知道前两年的分红数据
-    df2 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
-    )).dropna(axis=0)
-    
-    #知道前3年的分红数据
-    df3 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-2,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
-    )).dropna(axis=0)
-    
-    # 如果前一年的分红不知道，那么知道前4年的分红数据
-    df4 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-3,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
-            gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
-    )).dropna(axis=0)
-    
-    df= pd.concat((df4,df3,df2,df1))
+    if year_watch == 3:
+        #知道前两年的分红数据
+        df2 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
+        )).dropna(axis=0)
+        
+        #知道前3年的分红数据
+        df3 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-2,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
+        )).dropna(axis=0)
+        
+        # 如果前一年的分红不知道，那么知道前4年的分红数据
+        df4 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-3,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
+                gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
+        )).dropna(axis=0)
+    elif year_watch == 1:
+        # 如果前一年的分红不知道，那么知道前4年的分红数据
+        df2 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
+                gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
+        )).dropna(axis=0)
+    else
+        log.info('不支持1年和3年之外的参数！！！')
+        return
+    if year_watch == 1:
+        df=pd.concat((df2,df1))
+    else:
+        df= pd.concat((df4,df3,df2,df1))
     #print df[(df.SYMBOL == '002495')]
     
     # 下面四行代码用于选择在当前时间内能已知去年股息信息的股票
@@ -112,7 +131,7 @@ def getDivid(stocks): #(context,stocks):
     
     #计算股息率 = 股息/股票价格
     df['divpercent']=df['DIVIDENTBT']/df['pre_close']
-    df['divpercent2']=df['TOTALDIVIDENDDISTRI']/df['cap']/df['pre_close']/1000
+    df['divpercent']=df['TOTALDIVIDENDDISTRI']/df['cap']/df['pre_close']/100/year_watch
     
     df['code'] = np.array(df.index)
     df = df.sort(['divpercent'], ascending=[False])
@@ -123,4 +142,5 @@ def getDivid(stocks): #(context,stocks):
 
 stocks = get_index_stocks('000300.XSHG')
 stocks = get_all_securities(['stock']).index
+#getDivid(stocks, 1)
 getDivid(stocks)

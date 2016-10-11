@@ -3,25 +3,31 @@ import numpy as np
 import math
 import talib as tl
 from jqdata import gta
-#from datetime import datetime, timedelta
+'''
+================================================================================
+总体回测前
+================================================================================
+'''
+# 初始化函数，设定要操作的股票、基准等等
+#总体回测前要做的事情
 def initialize(context):
-    set_option('use_real_price', True)
+    set_params()                                # 设置策略常量
+    #set_variables()                            # 设置中间变量
+    set_backtest()                              # 设置回测条件
+    
+def set_params():
     #----------------Settings--------------------------------------------------/
-    g.baseIndex = '000300.XSHG'
-    g.periodBullBear = 20
-    g.periodBeta = 5
-    g.daysDelta = timedelta(days = g.periodBeta + 60)
-    g.poolSize = 20
+    
+    g.periodBullBear = 20                       # 某个时间，计算牛熊的
+    g.periodBeta = 64
+    g.daysDelta = timedelta(days=g.periodBeta)  # 64天内上市的新股不考虑
+    g.poolSize = 50                             # 统计前 50 的高息股，求平均股息率
     g.holdSize = 5
     g.maxDrawdown = 0.05
-    
-    g.meanList = []
-    g.medianList = []
-    
+        
     
     # holds buffer
     g.stockBuyList = []
-    g.bullOrBear = None
     
     
     g.f = 1.0/g.poolSize*2.0 
@@ -29,122 +35,22 @@ def initialize(context):
     g.apr_max_filter = 1.00
     #----------------Settings--------------------------------------------------/
     
-    #run_weekly(checkWeekly, -1, time='after_close')
-    #run_weekly(swapWeekly, 1, time='open')
-    #run_daily(checkWeekly, time='before_open')
-    #run_daily(swapWeekly, time='open')
-    #run_daily(w300file, time='open')
-    run_monthly(checkWeekly, 1, 'before_open')
-    run_monthly(swapWeekly, 1, 'open')
+    run_monthly(checkMonthly, 1, 'before_open')
+    #run_monthly(swapWeekly, 1, 'open')
     
-    #run_weekly(checkBullOrBear, -1, time='after_close')
-    #run_daily(dailyRun, time='open')
+#3
+#设置回测条件
+def set_backtest():
+    set_option('use_real_price',True)        # 用真实价格交易
+    log.set_level('order','debug')           # 设置报错等级
+    
 
-
-def swapWeekly(context):
-    # 取得牛熊标志位
-    #g.bullOrBear = checkBullOrBear(g.baseIndex)
-    if g.bullOrBear == 'bear' :
-        g.stockBuyList = []
-        pass
+# 判断股息
+def checkMonthly(context) :
     
-    have_set = set(context.portfolio.positions.keys())
-    to_sell = set()
-    to_buy = set()
-    holdsFull = g.stockBuyList
-    
-    to_sell = have_set - set(holdsFull)
-    
-    num2Add = g.holdSize - len(context.portfolio.positions.keys()) + len(to_sell)
-    
-    for stock in to_sell:
-        ret = order_target(stock, 0)
-        if ret is not None and ret.status == OrderStatus.held:
-            pass
-            try :
-                user.sell(stock[:6], price=10000, amount=(100 / g.holdSize)) #卖出N%
-            except :
-                pass
-        else :
-            # failed
-            num2Add = num2Add - 1
-    
-    currentBalance = context.portfolio.cash
-    current_data = get_current_data()
-    #log.debug([num2Add])
-    allValue = context.portfolio.portfolio_value
-    for stock in holdsFull:
-        
-        if stock in have_set :
-            continue
-        
-        if current_data[stock].paused :
-            continue
-        
-        if num2Add == 0 :
-            break
-
-        #bs = checkBullOrBear(stock)
-        #if bs == 'bear' :
-        #    continue
-        
-        atrV = 0.000001
-        pct = 1
-        
-        each = context.portfolio.cash/(num2Add)
-        #each = context.portfolio.cash
-        volumeAvg = int(each * pct/current_data[stock].high_limit/100) * 100
-        volumeAtr = int((each * g.maxDrawdown / atrV) / 100) * 100
-        #volumeAtr = volumeAvg
-        volume = min(volumeAtr, volumeAvg)
-        if volume > 0:
-            ret = order_target(stock, volume)
-            #ret = order_target_value(stock, allValue * pct)
-            if ret is not None and ret.status == OrderStatus.held:
-                num2Add = num2Add - 1
-                try :
-                    user.buy(stock[:6], price=10000, amount=(100 / g.holdSize)) #买入N%
-                except :
-                    pass
-                pass
-
-    g.holdSize = int(allValue / 20000)
-    g.poolSize = g.holdSize + 50
-    
-# 判断牛熊市场
-def checkBullOrBear(stock) :
-    
-    hData = attribute_history(stock, g.periodBullBear + 60, unit='1d'
-                    , fields=('close', 'volume', 'open', 'high', 'low')
-                    , skip_paused=True
-                    , df=False)
-    
-    volume = hData['volume']
-    volume = np.array(volume, dtype='f8')
-    close = hData['close']
-    open = hData['open']
-    high = hData['high']
-    low = hData['low']
-    
-    ma = tl.MA(close, timeperiod=20)
-    rsiS = tl.RSI(close, timeperiod=20)
-    #if rsiS[-1] < 55 or np.isnan(rsiS[-1]):
-    if ma[-1] < ma[-2] :
-        ret = 'bear'
-    else :
-        ret = 'bull'
-    return ret
-
-# 判断牛熊，根据牛熊取得相应的标的物
-def checkWeekly(context) :
-    
-    log.debug('checkWeekly')
+    log.debug('checkMonthly')
     allValue = context.portfolio.portfolio_value
     g.holdSize = int(allValue / 20000)
-    g.poolSize = g.holdSize + 50
-    # 取得牛熊标志位
-    #g.bullOrBear = checkBullOrBear(g.baseIndex)
-    #g.bullOrBear = 'bull'
     
     # 取得目标交易标的
     df = get_all_securities(['stock'])
@@ -215,7 +121,6 @@ def checkWeekly(context) :
     # 按照股息率从大到小排序
     fMerge = fMerge.sort(['divpercent'], ascending=[False])
     
-    
     # ***************************
     #fDivid['GuxiLv'] = map(lambda x : cal_guxilv(x, context.current_dt), fDivid['code'])
     #fDivid = fDivid.sort(['GuxiLv'], ascending=[False])
@@ -226,6 +131,9 @@ def checkWeekly(context) :
     # ***************************
     
     fMerge = fMerge.head(g.poolSize)
+    #log.debug(fMerge)
+    #log.debug(fMerge.mean())
+    log.debug(fMerge.mean()['divpercent'])
     g.stockBuyList = list(fMerge['code'])
 
 
@@ -253,8 +161,8 @@ def cal_guxilv(stock,current_dt):
 	price=attribute_history(stock, 1, '1d', ('close'))['close'][-1]
 	return float(meigufenhong)/price
 	
-# 取得3年总股息率
-def getDivid(context,stocks):
+# 取得默认3年平均股息率
+def getDivid(context,stocks, year_watch = 3):
     year = context.current_dt.year-1
     #now = datetime.now()  
     #year = now.year
@@ -280,48 +188,67 @@ def getDivid(context,stocks):
     
     stocks_symbol_this_year=list(df1['SYMBOL'])
     
-    #知道前两年的分红数据
-    df2 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
-    )).dropna(axis=0)
-    
-    #知道前3年的分红数据
-    df3 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-2,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
-    )).dropna(axis=0)
-    
-    # 如果前一年的分红不知道，那么知道前4年的分红数据
-    df4 = gta.run_query(query(
-            gta.STK_DIVIDEND.SYMBOL,#股票代码
-            gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
-            gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
-            gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
-    ).filter(
-            gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
-            gta.STK_DIVIDEND.DIVDENDYEAR == year-3,
-           #且分红信息在上一年度
-            gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
-            gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
-    )).dropna(axis=0)
-    
-    df= pd.concat((df4,df3,df2,df1))
-    print df[(df.SYMBOL == '002495')]
+    if year_watch == 3:
+        #知道前两年的分红数据
+        df2 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
+        )).dropna(axis=0)
+        
+        #知道前3年的分红数据
+        df3 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-2,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol)
+        )).dropna(axis=0)
+        
+        # 如果前一年的分红不知道，那么知道前4年的分红数据
+        df4 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-3,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
+                gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
+        )).dropna(axis=0)
+        df= pd.concat((df4,df3,df2,df1))
+    elif year_watch == 1:
+        # 如果前一年的分红不知道，那么知道前4年的分红数据
+        df2 = gta.run_query(query(
+                gta.STK_DIVIDEND.SYMBOL,#股票代码
+                gta.STK_DIVIDEND.DIVIDENTBT,#股票分红
+                gta.STK_DIVIDEND.TOTALDIVIDENDDISTRI,#派息数(实)
+                gta.STK_DIVIDEND.DECLAREDATE#分红消息的时间
+        ).filter(
+                gta.STK_DIVIDEND.ISDIVIDEND == 'Y',#有分红的股票
+                gta.STK_DIVIDEND.DIVDENDYEAR == year-1,
+               #且分红信息在上一年度
+                gta.STK_DIVIDEND.SYMBOL.in_(stocks_symbol),
+                gta.STK_DIVIDEND.SYMBOL.notin_(stocks_symbol_this_year)  #不知道今年信息的
+        )).dropna(axis=0)
+        df=pd.concat((df2,df1))
+    else:
+        log.info('不支持1年和3年之外的参数！！！')
+        return
+
+    #print df[(df.SYMBOL == '002495')]
     
     # 下面四行代码用于选择在当前时间内能已知去年股息信息的股票
     df['pubtime'] = map(lambda x: int(x.split('-')[0]+x.split('-')[1]+x.split('-')[2]),df['DECLAREDATE'])
@@ -361,7 +288,7 @@ def getDivid(context,stocks):
     
     #计算股息率 = 股息/股票价格
     #df['divpercent']=df['DIVIDENTBT']/df['pre_close']
-    df['divpercent']=df['TOTALDIVIDENDDISTRI']/df['cap']/df['pre_close']/1000
+    df['divpercent']=df['TOTALDIVIDENDDISTRI']/df['cap']/df['pre_close']/100/year_watch
     #print df
     df['code'] = np.array(df.index)
     
