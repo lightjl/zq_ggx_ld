@@ -23,8 +23,7 @@ def set_params():
     g.daysDelta = timedelta(days=g.periodBeta)  # 64天内上市的新股不考虑
     g.poolSize = 50                             # 统计前 50 的高息股，求平均股息率
     g.holdSize = 5
-    g.maxDrawdown = 0.05
-        
+    g.dqlx = 2                                  # 大于一年定期存款利率1.85%,買股
     
     # holds buffer
     g.stockBuyList = []
@@ -35,7 +34,8 @@ def set_params():
     g.apr_max_filter = 1.00
     #----------------Settings--------------------------------------------------/
     
-    run_monthly(checkMonthly, 1, 'before_open')
+    #run_monthly(checkMonthly, 1, 'before_open')
+    run_monthly(checkMonthly, 1, 'open')
     #run_monthly(swapWeekly, 1, 'open')
     
 #3
@@ -134,38 +134,40 @@ def checkMonthly(context) :
     #log.debug(fMerge)
     #log.debug(fMerge.mean())
     log.debug(fMerge.mean()['divpercent'])
-    g.stockBuyList = list(fMerge['code'])
+    
+    if fMerge.mean()['divpercent'] < g.dqlx:
+    # 存錢
+        sell_all_stock(context)
+    else:
+    # 平均利息大于定期利息
+        fMerge = fMerge[fMerge.divpercent > 6]
+        list_canbuy = list(fMerge['code'])[0:g.holdSize]
+        list_sell = set(context.portfolio.positions.keys()) - set(list_canbuy)
+        for stock in list_sell:
+            order_target_value(stock, 0)
+        list_tobuy = set(list_canbuy) - set(context.portfolio.positions.keys())
+        if len(list_tobuy) == 0:
+            return
+        capital_unit = context.portfolio.available_cash/len(list_tobuy)
+        for stock in list_tobuy:
+            order_target_value(stock, capital_unit)
+        
 
+
+def sell_all_stock(context):
+    for stock in context.portfolio.positions.keys():
+        order_target_value(stock, 0)
 
 def before_trading_start(context):
     
     set_universe(g.stockBuyList)
     pass
 
-def cal_guxilv(stock,current_dt):
-	t_up=current_dt-datetime.timedelta(1)
-	t_down=current_dt-datetime.timedelta(30*6)
 	
-	stocklist=[stock[:6]]
-	q=query(gta.STK_MKT_DIVIDENT) \
-		.filter(gta.STK_MKT_DIVIDENT.DECLAREDATE<=str(t_up), \
-				gta.STK_MKT_DIVIDENT.DECLAREDATE>=str(t_down), \
-				gta.STK_MKT_DIVIDENT.SYMBOL.in_(stocklist)) \
-		.order_by(gta.STK_MKT_DIVIDENT.PAYMENTDATE.desc())
-	df = gta.run_query(q)
-	if len(df['DIVIDENTAT'])<=0:
-		return None
-	meigufenhong=df['DIVIDENTAT'][0]
-	if meigufenhong==None:
-		return None
-	price=attribute_history(stock, 1, '1d', ('close'))['close'][-1]
-	return float(meigufenhong)/price
-	
-# 取得默认3年平均股息率
-def getDivid(context,stocks, year_watch = 3):
+def getDivid(context, stocks, year_watch = 3):
     year = context.current_dt.year-1
     #now = datetime.now()  
-    #year = now.year
+    #year = now.year-1
     
     #将当前股票池转换为国泰安的6位股票池
     stocks_symbol=[]
@@ -248,14 +250,14 @@ def getDivid(context,stocks, year_watch = 3):
         log.info('不支持1年和3年之外的参数！！！')
         return
 
-    #print df[(df.SYMBOL == '002495')]
+    #print df[(df.SYMBOL == '601006')]
     
     # 下面四行代码用于选择在当前时间内能已知去年股息信息的股票
     df['pubtime'] = map(lambda x: int(x.split('-')[0]+x.split('-')[1]+x.split('-')[2]),df['DECLAREDATE'])
     #print df['pubtime']
     currenttime  = int(str(context.current_dt)[0:4]+str(context.current_dt)[5:7]+str(context.current_dt)[8:10])
     #currenttime  = int(str(now.year)+'{:0>2}'.format(str(now.month))+'{:0>2}'.format(str(now.day)))
-    print currenttime
+    #print currenttime
     # 筛选出pubtime小于当前时期的股票，然后剔除'DECLAREDATE','pubtime','SYMBOL'三列
     # 并且将DIVIDENTBT 列转换为float
     df = df[(df.pubtime < currenttime)]
@@ -267,7 +269,7 @@ def getDivid(context,stocks, year_watch = 3):
     df['DIVIDENTBT'] = map(float, df['DIVIDENTBT'])
     df['TOTALDIVIDENDDISTRI'] = map(float, df['TOTALDIVIDENDDISTRI'])
     
-    q_now = query(valuation.code, valuation.capitalization)
+    q_now = query(valuation.code, valuation.market_cap)
     df_now = get_fundamentals(q_now)
     df_now.index=list(df_now['code'])
     #print df_now
@@ -275,22 +277,27 @@ def getDivid(context,stocks, year_watch = 3):
     #接下来这一步是考虑多次分红的股票，因此需要累加股票的多次分红
     #按照股票代码分堆
     df = df.groupby(df.index).sum()
-    df['cap'] = df_now['capitalization']
+    df['market_cap'] = df_now['market_cap']
     #得到当前股价
-    Price=history(1, unit='1d', field='close', security_list=list(df.index), df=True, skip_paused=False, fq='pre')
+    #Price=history(1, unit='1d', field='close', security_list=list(df.index), df=True, skip_paused=False, fq='pre')
     
     #Price=get_price(list(df.index), count = 1, end_date=now , frequency='daily', fields='close')
     #print Price['close']
     #Price=Price['close'].T
-    Price=Price.T
-    df['pre_close']=Price
+    #print Price
+    #Price=Price.T
+    #df['pre_close']=Price
 
     
     #计算股息率 = 股息/股票价格
     #df['divpercent']=df['DIVIDENTBT']/df['pre_close']
-    df['divpercent']=df['TOTALDIVIDENDDISTRI']/df['cap']/df['pre_close']/100/year_watch
+    df['divpercent']=df['TOTALDIVIDENDDISTRI']/df['market_cap']/1000000/year_watch
     #print df
     df['code'] = np.array(df.index)
+    #print df[(df.code == '601006.XSHG')]
+    df = df.sort(['divpercent'], ascending=[False])
+    df_name = get_all_securities(['stock'])
+    df['name'] = df_name['display_name']
     
     return df
 
