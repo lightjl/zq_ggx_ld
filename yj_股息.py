@@ -7,10 +7,10 @@ import talib as tl
 from jqdata import gta
 
 # 取得默认3年平均股息率
-def getDivid(stocks, year_watch = 3):
+def getDivid(stocks, year_check, month_check, day_check, year_watch = 3):
     #year = context.current_dt.year-1
-    now = datetime.now()  
-    year = now.year-1
+     
+    year = year_check-1
     
     #将当前股票池转换为国泰安的6位股票池
     stocks_symbol=[]
@@ -99,7 +99,7 @@ def getDivid(stocks, year_watch = 3):
     df['pubtime'] = map(lambda x: int(x.split('-')[0]+x.split('-')[1]+x.split('-')[2]),df['DECLAREDATE'])
     #print df['pubtime']
     #currenttime  = int(str(context.current_dt)[0:4]+str(context.current_dt)[5:7]+str(context.current_dt)[8:10])
-    currenttime  = int(str(now.year)+'{:0>2}'.format(str(now.month))+'{:0>2}'.format(str(now.day)))
+    currenttime  = int(str(year_check)+'{:0>2}'.format(str(month_check))+'{:0>2}'.format(str(day_check)))
     #print currenttime
     # 筛选出pubtime小于当前时期的股票，然后剔除'DECLAREDATE','pubtime','SYMBOL'三列
     # 并且将DIVIDENTBT 列转换为float
@@ -111,9 +111,9 @@ def getDivid(stocks, year_watch = 3):
 
     df['DIVIDENTBT'] = map(float, df['DIVIDENTBT'])
     df['TOTALDIVIDENDDISTRI'] = map(float, df['TOTALDIVIDENDDISTRI'])
-    
+    check_time  = str(year_check)+'-'+'{:0>2}'.format(str(month_check))+'-'+'{:0>2}'.format(str(day_check))
     q_now = query(valuation.code, valuation.market_cap)
-    df_now = get_fundamentals(q_now)
+    df_now = get_fundamentals(q_now, date=check_time)
     df_now.index=list(df_now['code'])
     #print df_now
     
@@ -147,4 +147,13 @@ def getDivid(stocks, year_watch = 3):
 stocks = get_index_stocks('000300.XSHG')
 stocks = get_all_securities(['stock']).index
 #getDivid(stocks, 1)
-getDivid(stocks)
+now = datetime.now()
+year_check = now.year
+month_check = now.month
+day_check = now.day
+'''
+year_check = 2015
+month_check = 6
+day_check = 16
+'''
+getDivid(stocks, year_check, month_check, day_check)
